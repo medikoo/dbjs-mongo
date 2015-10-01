@@ -37,8 +37,7 @@ var MongoDriver = module.exports = function (dbjs, data) {
 	ensureString(data.database);
 	ensureString(data.collection);
 	PersistenceDriver.call(this, dbjs, data);
-	this.mongoDb = connect(buildUrl(data));
-	this.mongoDb.done();
+	this.mongoDb = connect(buildUrl(data)).aside(null, this.emitError);
 	this.collection = this.mongoDb.invokeAsync('collection', data.collection);
 };
 setPrototypeOf(MongoDriver, PersistenceDriver);
