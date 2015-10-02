@@ -60,15 +60,20 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		}.bind(this));
 	}),
 	_load: d(function (query) {
-		return this.collection.invokeAsync('find', query)(function (cursor) {
+		var count = 0;
+		var promise = this.collection.invokeAsync('find', query)(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
 				return cursor.closePromised()(records.map(function (record) {
+					var event;
 					if (record._id[0] === '=') return; // computed record
 					if (record._id[0] === '_') return; // custom record
-					return this._importValue(record._id, record.value, record.stamp);
+					event = this._importValue(record._id, record.value, record.stamp);
+					if (event && !(++count % 1000)) promise.emit('progress');
+					return event;
 				}, this).filter(Boolean));
 			}.bind(this));
 		}.bind(this));
+		return promise;
 	}),
 	_loadObject: d(function (id) { return this._load({ _id: { $gte: id, $lt: id + '/\uffff' } }); }),
 	_loadAll: d(function () { return this._load(); }),
