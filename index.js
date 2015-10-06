@@ -125,7 +125,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		var count = 0;
 		var promise = this.collection.invokeAsync('find')(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
-				return cursor.closePromised()(records.map(function (record) {
+				return cursor.closePromised()(deferred.map(records, function (record) {
 					if (!(++count % 1000)) promise.emit('progress');
 					return destDriver._storeRaw(record._id, record);
 				}, this));
