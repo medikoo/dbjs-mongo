@@ -115,5 +115,23 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			value: value
 		}, updateOpts);
 	}),
+	_storeRaw: d(function (id, value) {
+		if (id[0] === '_') return this._storeCustom(id.slice(1), value);
+		if (id[0] === '=') return this._storeComputed(id.slice(1), value.value, value.stamp);
+		return this.collection.invokeAsync('update', { _id: id },
+			{ value: value.value, stamp: value.stamp }, updateOpts);
+	}),
+	_exportAll: d(function (destDriver) {
+		var count = 0;
+		var promise = this.collection.invokeAsync('find')(function (cursor) {
+			return cursor.toArrayPromised()(function (records) {
+				return cursor.closePromised()(records.map(function (record) {
+					if (!(++count % 1000)) promise.emit('progress');
+					return destDriver._storeRaw(record._id, record);
+				}, this));
+			}.bind(this));
+		}.bind(this));
+		return promise;
+	}),
 	_close: d(function () { return this.mongoDb.invokeAsync('close'); })
 });

@@ -4,7 +4,7 @@ var deferred = require('deferred')
   , Database = require('dbjs')
   , Event    = require('dbjs/_setup/event')
 
-  , env;
+  , env, copyEnv;
 
 try {
 	env = require('../env');
@@ -20,6 +20,8 @@ module.exports = function (t, a, d) {
 	}
 
 	env.collection = 'dbjs-mongo-test-' + Date.now();
+	copyEnv = Object.create(env);
+	copyEnv.collection = 'dbjs-mongo-test-copy-' + Date.now();
 	var db = new Database()
 	  , driver = t(db, env)
 	  , aaa = db.Object.newNamed('aaa')
@@ -92,6 +94,23 @@ module.exports = function (t, a, d) {
 				a(db.bar.miszka, 343);
 			})(function () {
 				return driver.close();
+			});
+		})(function () {
+			var db = new Database()
+			  , driver = t(new Database(), env)
+			  , driverCopy = t(db, copyEnv);
+			return driver.export(driverCopy)(function () {
+				return driverCopy.loadAll()(function () {
+					a(db.foo.constructor, db.Object);
+					a(db.foo.raz, 'marko');
+					a(db.foo.bal, false);
+					a(db.foo.ole, 767);
+					a(db.aaa.constructor, db.Object);
+					a(db.zzz.constructor, db.Object);
+					a(db.bar.miszka, 343);
+				});
+			})(function () {
+				return deferred(driver.close(), driverCopy.close());
 			});
 		});
 	}).done(function () { d(); }, d);
