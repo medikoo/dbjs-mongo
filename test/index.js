@@ -10,12 +10,19 @@ try {
 	env = null;
 }
 
-env.collection = 'dbjs-mongo-test-' + Date.now();
-copyEnv = Object.create(env);
-copyEnv.collection = 'dbjs-mongo-test-copy-' + Date.now();
+if (env) {
+	env.collection = 'dbjs-mongo-test-' + Date.now();
+	copyEnv = Object.create(env);
+	copyEnv.collection = 'dbjs-mongo-test-copy-' + Date.now();
 
-tests = getTests(env, copyEnv);
+	tests = getTests(env, copyEnv);
+}
 
 module.exports = function (t, a, d) {
+	if (!env) {
+		console.error("No database configuration (env.json), unable to proceed with test");
+		d();
+		return;
+	}
 	return tests.apply(null, arguments).done(function () { d(); }, d);
 };
