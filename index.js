@@ -88,7 +88,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		}, updateOpts);
 	}),
 	_storeEvents: d(function (events) { return deferred.map(events, this._storeEvent, this); }),
-	_getComputed: d(function (objId, keyPath) {
+	_getIndexedValue: d(function (objId, keyPath) {
 		return this.collection.invokeAsync('find', { _id: '=' + keyPath + ':' + objId })(
 			function (cursor) {
 				return cursor.nextPromised()(function (record) {
@@ -97,7 +97,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			}
 		);
 	}),
-	_getComputedMap: d(function (keyPath) {
+	_getIndexedMap: d(function (keyPath) {
 		var query = { _id: { $gte: '=' + keyPath + ':', $lt: '=' + keyPath + ':\uffff' } }
 		  , map = create(null);
 		return this.collection.invokeAsync('find', query)(function (cursor) {
@@ -109,7 +109,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			}.bind(this));
 		}.bind(this))(map);
 	}),
-	_storeComputed: d(function (objId, keyPath, data) {
+	_storeIndexedValue: d(function (objId, keyPath, data) {
 		return this.collection.invokeAsync('update', { _id: '=' + keyPath + ':' + objId }, {
 			stamp: data.stamp,
 			value: data.value
@@ -120,7 +120,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		if (id[0] === '_') return this._storeCustom(id.slice(1), value);
 		if (id[0] === '=') {
 			index = id.lastIndexOf(':');
-			return this._storeComputed(id.slice(index + 1), id.slice(1, index), value);
+			return this._storeIndexedValue(id.slice(index + 1), id.slice(1, index), value);
 		}
 		return this.collection.invokeAsync('update', { _id: id },
 			{ value: value.value, stamp: value.stamp }, updateOpts);
