@@ -88,36 +88,40 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		}, updateOpts);
 	}),
 	_storeEvents: d(function (events) { return deferred.map(events, this._storeEvent, this); }),
-	_getComputed: d(function (id) {
-		return this.collection.invokeAsync('find', { _id: '=' + id })(function (cursor) {
-			return cursor.nextPromised()(function (record) {
-				return cursor.closePromised()(record || getNull);
-			});
-		});
+	_getComputed: d(function (objId, keyPath) {
+		return this.collection.invokeAsync('find', { _id: '=' + keyPath + ':' + objId })(
+			function (cursor) {
+				return cursor.nextPromised()(function (record) {
+					return cursor.closePromised()(record || getNull);
+				});
+			}
+		);
 	}),
-	_getAllComputed: d(function (keyPath) {
-		var query = { _id: { $gte: '=', $lt: '=\uffff' } }, map = create(null);
+	_getComputedMap: d(function (keyPath) {
+		var query = { _id: { $gte: '=' + keyPath + ':', $lt: '=' + keyPath + ':\uffff' } }
+		  , map = create(null);
 		return this.collection.invokeAsync('find', query)(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
 				records.forEach(function (record) {
-					var id = record._id.slice(1)
-					  , objId = id.split('/', 1)[0], localKeyPath = id.slice(objId.length + 1);
-					if (localKeyPath !== keyPath) return;
-					map[id] = record;
+					map[record._id.slice(record._id.lastIndexOf(':') + 1)] = record;
 				}, this);
 				return cursor.closePromised();
 			}.bind(this));
 		}.bind(this))(map);
 	}),
-	_storeComputed: d(function (id, value, stamp) {
-		return this.collection.invokeAsync('update', { _id: '=' + id }, {
-			stamp: stamp,
-			value: value
+	_storeComputed: d(function (objId, keyPath, data) {
+		return this.collection.invokeAsync('update', { _id: '=' + keyPath + ':' + objId }, {
+			stamp: data.stamp,
+			value: data.value
 		}, updateOpts);
 	}),
 	_storeRaw: d(function (id, value) {
+		var index;
 		if (id[0] === '_') return this._storeCustom(id.slice(1), value);
-		if (id[0] === '=') return this._storeComputed(id.slice(1), value.value, value.stamp);
+		if (id[0] === '=') {
+			index = id.lastIndexOf(':');
+			return this._storeComputed(id.slice(index + 1), id.slice(1, index), value);
+		}
 		return this.collection.invokeAsync('update', { _id: id },
 			{ value: value.value, stamp: value.stamp }, updateOpts);
 	}),
@@ -133,5 +137,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		}.bind(this));
 		return promise;
 	}),
-	_close: d(function () { return this.mongoDb.invokeAsync('close'); })
+	_close: d(function () {
+		return this.mongoDb.invokeAsync('close');
+	})
 });
