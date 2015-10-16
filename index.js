@@ -44,13 +44,20 @@ setPrototypeOf(MongoDriver, PersistenceDriver);
 
 MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	constructor: d(MongoDriver),
-	_getCustom: d(function (key) {
-		return this.collection.invokeAsync('find', { _id: '_' + key })(function (cursor) {
-			return cursor.nextPromised()(function (record) {
-				return cursor.closePromised()(record ? record.value : getUndefined);
-			});
-		});
+
+	// Any data
+	_storeRaw: d(function (id, value) {
+		var index;
+		if (id[0] === '_') return this._storeCustom(id.slice(1), value);
+		if (id[0] === '=') {
+			index = id.lastIndexOf(':');
+			return this._storeIndexedValue(id.slice(index + 1), id.slice(1, index), value);
+		}
+		return this.collection.invokeAsync('update', { _id: id },
+			{ value: value.value, stamp: value.stamp }, updateOpts);
 	}),
+
+	// Database data
 	_loadValue: d(function (id) {
 		return this.collection.invokeAsync('find', { _id: id })(function (cursor) {
 			return cursor.nextPromised()(function (record) {
@@ -59,28 +66,8 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			}.bind(this));
 		}.bind(this));
 	}),
-	_load: d(function (query) {
-		var count = 0;
-		var promise = this.collection.invokeAsync('find', query)(function (cursor) {
-			return cursor.toArrayPromised()(function (records) {
-				return cursor.closePromised()(records.map(function (record) {
-					var event;
-					if (record._id[0] === '=') return; // computed record
-					if (record._id[0] === '_') return; // custom record
-					event = this._importValue(record._id, record.value, record.stamp);
-					if (event && !(++count % 1000)) promise.emit('progress');
-					return event;
-				}, this).filter(Boolean));
-			}.bind(this));
-		}.bind(this));
-		return promise;
-	}),
 	_loadObject: d(function (id) { return this._load({ _id: { $gte: id, $lt: id + '/\uffff' } }); }),
 	_loadAll: d(function () { return this._load(); }),
-	_storeCustom: d(function (key, value) {
-		if (value === undefined) return this.collection.invokeAsync('remove', { _id: '_' + key });
-		return this.collection.invokeAsync('update', { _id: '_' + key }, { value: value }, updateOpts);
-	}),
 	_storeEvent: d(function (event) {
 		return this.collection.invokeAsync('update', { _id: event.object.__valueId__ }, {
 			stamp: event.stamp,
@@ -88,6 +75,8 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		}, updateOpts);
 	}),
 	_storeEvents: d(function (events) { return deferred.map(events, this._storeEvent, this); }),
+
+	// Indexed database data
 	_getIndexedValue: d(function (objId, keyPath) {
 		return this.collection.invokeAsync('find', { _id: '=' + keyPath + ':' + objId })(
 			function (cursor) {
@@ -115,16 +104,21 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			value: data.value
 		}, updateOpts);
 	}),
-	_storeRaw: d(function (id, value) {
-		var index;
-		if (id[0] === '_') return this._storeCustom(id.slice(1), value);
-		if (id[0] === '=') {
-			index = id.lastIndexOf(':');
-			return this._storeIndexedValue(id.slice(index + 1), id.slice(1, index), value);
-		}
-		return this.collection.invokeAsync('update', { _id: id },
-			{ value: value.value, stamp: value.stamp }, updateOpts);
+
+	// Custom data
+	_getCustom: d(function (key) {
+		return this.collection.invokeAsync('find', { _id: '_' + key })(function (cursor) {
+			return cursor.nextPromised()(function (record) {
+				return cursor.closePromised()(record ? record.value : getUndefined);
+			});
+		});
 	}),
+	_storeCustom: d(function (key, value) {
+		if (value === undefined) return this.collection.invokeAsync('remove', { _id: '_' + key });
+		return this.collection.invokeAsync('update', { _id: '_' + key }, { value: value }, updateOpts);
+	}),
+
+	// Storage import/export
 	_exportAll: d(function (destDriver) {
 		var count = 0;
 		var promise = this.collection.invokeAsync('find')(function (cursor) {
@@ -137,7 +131,27 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		}.bind(this));
 		return promise;
 	}),
+
+	// Connection related
 	_close: d(function () {
 		return this.mongoDb.invokeAsync('close');
+	}),
+
+	// Driver specific
+	_load: d(function (query) {
+		var count = 0;
+		var promise = this.collection.invokeAsync('find', query)(function (cursor) {
+			return cursor.toArrayPromised()(function (records) {
+				return cursor.closePromised()(records.map(function (record) {
+					var event;
+					if (record._id[0] === '=') return; // computed record
+					if (record._id[0] === '_') return; // custom record
+					event = this._importValue(record._id, record.value, record.stamp);
+					if (event && !(++count % 1000)) promise.emit('progress');
+					return event;
+				}, this).filter(Boolean));
+			}.bind(this));
+		}.bind(this));
+		return promise;
 	})
 });
