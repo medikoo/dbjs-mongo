@@ -6,6 +6,7 @@ var flatten           = require('es5-ext/array/#/flatten')
   , ensureString      = require('es5-ext/object/validate-stringifiable-value')
   , ensureObject      = require('es5-ext/object/valid-object')
   , d                 = require('d')
+  , unifyEvents       = require('event-emitter/unify')
   , deferred          = require('deferred')
   , serialize         = require('dbjs/_setup/serialize/value')
   , MongoClient       = require('mongodb').MongoClient
@@ -77,9 +78,12 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 
 	// Database data
 	_loadAll: d(function () {
-		return this._load().map(function (data) {
+		var loadPromise = this._load();
+		var resultPromise = loadPromise.map(function (data) {
 			return this._importValue(data.id, data.data.value, data.data.stamp);
 		}.bind(this)).invoke(flatten);
+		unifyEvents(loadPromise, resultPromise);
+		return resultPromise;
 	}),
 	_storeEvent: d(function (event) {
 		return this.collection.invokeAsync('update', { _id: event.object.__valueId__ }, {
