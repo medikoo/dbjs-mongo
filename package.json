@@ -1,6 +1,6 @@
 {
   "name": "dbjs-mongo",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "mongodb driver for dbjs",
   "author": "Mariusz Nowak <medyk@medikoo.com> (http://www.medikoo.com/)",
   "keywords": [
