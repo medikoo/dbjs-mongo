@@ -18,7 +18,6 @@
     "deferred": "0.7.3",
     "dbjs": "git://github.com/medikoo/dbjs.git#258d1b1662bfca18668c16c46380140960be080c",
     "dbjs-persistence": "0.0.7",
-    "event-emitter": "^0.3.4",
     "mongodb": "^2.0.45"
   },
   "devDependencies": {

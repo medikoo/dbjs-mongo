@@ -6,7 +6,6 @@ var flatten           = require('es5-ext/array/#/flatten')
   , ensureString      = require('es5-ext/object/validate-stringifiable-value')
   , ensureObject      = require('es5-ext/object/valid-object')
   , d                 = require('d')
-  , unifyEvents       = require('event-emitter/unify')
   , deferred          = require('deferred')
   , serialize         = require('dbjs/_setup/serialize/value')
   , MongoClient       = require('mongodb').MongoClient
@@ -78,12 +77,12 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 
 	// Database data
 	_loadAll: d(function () {
-		var loadPromise = this._load();
-		var resultPromise = loadPromise.map(function (data) {
+		var count = 0;
+		var promise = this._load().map(function (data) {
+			if (!(++count % 1000)) promise.emit('progress');
 			return this._importValue(data.id, data.data.value, data.data.stamp);
 		}.bind(this)).invoke(flatten);
-		unifyEvents(loadPromise, resultPromise);
-		return resultPromise;
+		return promise;
 	}),
 	_storeEvent: d(function (event) {
 		return this.collection.invokeAsync('update', { _id: event.object.__valueId__ }, {
@@ -156,13 +155,11 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 
 	// Driver specific
 	_load: d(function (query) {
-		var count = 0;
 		var promise = this.collection.invokeAsync('find', query)(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
 				return cursor.closePromised()(records.map(function (record) {
 					if (record._id[0] === '=') return; // computed record
 					if (record._id[0] === '_') return; // custom record
-					if (!(++count % 1000)) promise.emit('progress');
 					return { id: record._id, data: record };
 				}).filter(Boolean).sort(byStamp));
 			}.bind(this));
