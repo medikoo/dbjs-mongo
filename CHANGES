@@ -1,3 +1,6 @@
+v0.0.6  --  2015.10.22
+* Update dbjs-persistence dependency
+
 v0.0.5  --  2015.10.19
 * Improve emit of progress events in loadAll
 
