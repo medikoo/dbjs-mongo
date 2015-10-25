@@ -1,6 +1,6 @@
 {
   "name": "dbjs-mongo",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "mongodb driver for dbjs",
   "author": "Mariusz Nowak <medyk@medikoo.com> (http://www.medikoo.com/)",
   "keywords": [
@@ -17,7 +17,7 @@
     "d": "^0.1.1",
     "deferred": "0.7.3",
     "dbjs": "git://github.com/medikoo/dbjs.git#258d1b1662bfca18668c16c46380140960be080c",
-    "dbjs-persistence": "0.0.8",
+    "dbjs-persistence": "0.0.9",
     "mongodb": "^2.0.45"
   },
   "devDependencies": {
