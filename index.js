@@ -7,12 +7,11 @@ var flatten           = require('es5-ext/array/#/flatten')
   , ensureObject      = require('es5-ext/object/valid-object')
   , d                 = require('d')
   , deferred          = require('deferred')
-  , serialize         = require('dbjs/_setup/serialize/value')
   , MongoClient       = require('mongodb').MongoClient
   , MongoCursor       = require('mongodb/lib/cursor')
   , PersistenceDriver = require('dbjs-persistence/abstract')
 
-  , create = Object.create, promisify = deferred.promisify
+  , promisify = deferred.promisify
   , getUndefined = constant(undefined)
   , getNull = constant(null)
   , connect = promisify(MongoClient.connect)
@@ -57,7 +56,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		}
 		return this.collection.invokeAsync('find', { _id: id })(function (cursor) {
 			return cursor.nextPromised()(function (record) {
-				return cursor.closePromised()(record);
+				return cursor.closePromised()(record || getNull);
 			}.bind(this));
 		}.bind(this));
 	}),
@@ -84,13 +83,10 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		}.bind(this)).invoke(flatten);
 		return promise;
 	}),
-	_storeEvent: d(function (event) {
-		return this.collection.invokeAsync('update', { _id: event.object.__valueId__ }, {
-			stamp: event.stamp,
-			value: serialize(event.value)
-		}, updateOpts);
+	_storeEvent: d(function (ownerId, targetPath, data) {
+		var id = ownerId + (targetPath ? ('/' + targetPath) : '');
+		return this.collection.invokeAsync('update', { _id: id }, data, updateOpts);
 	}),
-	_storeEvents: d(function (events) { return deferred.map(events, this._storeEvent, this); }),
 
 	// Indexed database data
 	_getIndexedValue: d(function (objId, keyPath) {
@@ -102,18 +98,6 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			}
 		);
 	}),
-	_getIndexedMap: d(function (keyPath) {
-		var query = { _id: { $gte: '=' + keyPath + ':', $lt: '=' + keyPath + ':\uffff' } }
-		  , map = create(null);
-		return this.collection.invokeAsync('find', query)(function (cursor) {
-			return cursor.toArrayPromised()(function (records) {
-				records.forEach(function (record) {
-					map[record._id.slice(record._id.lastIndexOf(':') + 1)] = record;
-				}, this);
-				return cursor.closePromised();
-			}.bind(this));
-		}.bind(this))(map);
-	}),
 	_storeIndexedValue: d(function (objId, keyPath, data) {
 		return this.collection.invokeAsync('update', { _id: '=' + keyPath + ':' + objId }, {
 			stamp: data.stamp,
@@ -121,17 +105,35 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		}, updateOpts);
 	}),
 
+	// Size tracking
+	_searchDirect: d(function (callback) {
+		return this._load().map(function (data) {
+			if (data.id.indexOf('/') === -1) return;
+			callback(data.id, data.data);
+		});
+	}),
+	_searchIndex: d(function (keyPath, callback) {
+		var query = { _id: { $gte: '=' + keyPath + ':', $lt: '=' + keyPath + ':\uffff' } };
+		return this.collection.invokeAsync('find', query)(function (cursor) {
+			return cursor.toArrayPromised()(function (records) {
+				records.forEach(function (record) {
+					callback(record._id.slice(record._id.lastIndexOf(':') + 1), record);
+				});
+				return cursor.closePromised()(getUndefined);
+			});
+		});
+	}),
+
 	// Custom data
 	_getCustom: d(function (key) {
 		return this.collection.invokeAsync('find', { _id: '_' + key })(function (cursor) {
 			return cursor.nextPromised()(function (record) {
-				return cursor.closePromised()(record ? record.value : getUndefined);
+				return cursor.closePromised()(record || getNull);
 			});
 		});
 	}),
-	_storeCustom: d(function (key, value) {
-		if (value === undefined) return this.collection.invokeAsync('remove', { _id: '_' + key });
-		return this.collection.invokeAsync('update', { _id: '_' + key }, { value: value }, updateOpts);
+	_storeCustom: d(function (key, data) {
+		return this.collection.invokeAsync('update', { _id: '_' + key }, data, updateOpts);
 	}),
 
 	// Storage import/export
