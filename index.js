@@ -139,14 +139,10 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		}.bind(this));
 		return promise;
 	}),
-	__clear: d(function () {
-		return this.collection.invokeAsync('deleteMany');
-	}),
+	__clear: d(function () { return this.collection.invokeAsync('deleteMany'); }),
 
 	// Connection related
-	__close: d(function () {
-		return this.mongoDb.invokeAsync('close');
-	}),
+	__close: d(function () { return this.mongoDb.invokeAsync('close'); }),
 
 	// Driver specific
 	_getIndexedValue: d(function (objId, keyPath) {
