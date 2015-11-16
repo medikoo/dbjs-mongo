@@ -46,7 +46,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 
 	// Any data
 	__getRaw: d(function (cat, ns, path) {
-		if (cat === 'reduced') return this._getCustom(ns + (path ? ('/' + path) : ''));
+		if (cat === 'reduced') return this._getReduced(ns + (path ? ('/' + path) : ''));
 		if (cat === 'computed') return this._getIndexedValue(path, ns);
 		return this.collection.invokeAsync('find', { _id: ns + (path ? ('/' + path) : '') })(
 			function (cursor) {
@@ -61,7 +61,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			keyPaths && function (ownerId, path) { return keyPaths.has(resolveKeyPath(path)); });
 	}),
 	__storeRaw: d(function (cat, ns, path, data) {
-		if (cat === 'reduced') return this._storeCustom(ns + (path ? ('/' + path) : ''), data);
+		if (cat === 'reduced') return this._storeReduced(ns + (path ? ('/' + path) : ''), data);
 		if (cat === 'computed') return this._storeIndexedValue(path, ns, data);
 		return this.collection.invokeAsync('update', { _id: ns + (path ? ('/' + path) : '') },
 			{ value: data.value, stamp: data.stamp }, updateOpts);
@@ -76,7 +76,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			return cursor.toArrayPromised()(function (records) {
 				records.forEach(function (record) {
 					if (record._id[0] === '=') return; // computed record
-					if (record._id[0] === '_') return; // custom record
+					if (record._id[0] === '_') return; // reduced record
 					callback(record._id, record);
 				});
 				return cursor.closePromised()(getUndefined);
@@ -164,14 +164,14 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			value: data.value
 		}, updateOpts);
 	}),
-	_getCustom: d(function (key) {
+	_getReduced: d(function (key) {
 		return this.collection.invokeAsync('find', { _id: '_' + key })(function (cursor) {
 			return cursor.nextPromised()(function (record) {
 				return cursor.closePromised()(record || getNull);
 			});
 		});
 	}),
-	_storeCustom: d(function (key, data) {
+	_storeReduced: d(function (key, data) {
 		return this.collection.invokeAsync('update', { _id: '_' + key }, data, updateOpts);
 	}),
 	_loadDirect: d(function (query, filter) {
@@ -181,7 +181,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 				records.forEach(function (record) {
 					var index, ownerId, path;
 					if (record._id[0] === '=') return; // computed record
-					if (record._id[0] === '_') return; // custom record
+					if (record._id[0] === '_') return; // reduced record
 					if (filter) {
 						index = record._id.indexOf('/');
 						ownerId = (index !== -1) ? record._id.slice(0, index) : record._id;
