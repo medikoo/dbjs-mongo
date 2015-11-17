@@ -58,7 +58,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	}),
 	__storeRaw: d(function (cat, ns, path, data) {
 		if (cat === 'reduced') return this._storeReduced(ns + (path ? ('/' + path) : ''), data);
-		if (cat === 'computed') return this._storeIndexedValue(path, ns, data);
+		if (cat === 'computed') return this._storeComputed(path, ns, data);
 		return this.collection.invokeAsync('update', { _id: ns + (path ? ('/' + path) : '') },
 			{ value: data.value, stamp: data.stamp }, updateOpts);
 	}),
@@ -154,7 +154,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			}
 		);
 	}),
-	_storeIndexedValue: d(function (objId, keyPath, data) {
+	_storeComputed: d(function (objId, keyPath, data) {
 		return this.collection.invokeAsync('update', { _id: '=' + keyPath + ':' + objId }, {
 			stamp: data.stamp,
 			value: data.value
