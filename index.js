@@ -48,19 +48,12 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	__getRaw: d(function (cat, ns, path) {
 		if (cat === 'reduced') return this._getReduced(ns + (path ? ('/' + path) : ''));
 		if (cat === 'computed') return this._getComputed(path, ns);
-		return this.collection.invokeAsync('find', { _id: ns + (path ? ('/' + path) : '') })(
-			function (cursor) {
-				return cursor.nextPromised()(function (record) {
-					return cursor.closePromised()(record || getNull);
-				}.bind(this));
-			}.bind(this)
-		);
+		return this._getDirect(ns, path);
 	}),
 	__storeRaw: d(function (cat, ns, path, data) {
 		if (cat === 'reduced') return this._storeReduced(ns + (path ? ('/' + path) : ''), data);
 		if (cat === 'computed') return this._storeComputed(path, ns, data);
-		return this.collection.invokeAsync('update', { _id: ns + (path ? ('/' + path) : '') },
-			{ value: data.value, stamp: data.stamp }, updateOpts);
+		return this._storeDirect(ns, path, data);
 	}),
 
 	// Database data
@@ -145,6 +138,15 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	__close: d(function () { return this.mongoDb.invokeAsync('close'); }),
 
 	// Driver specific
+	_getDirect: d(function (ownerId, path) {
+		return this.collection.invokeAsync('find', { _id: ownerId + (path ? ('/' + path) : '') })(
+			function (cursor) {
+				return cursor.nextPromised()(function (record) {
+					return cursor.closePromised()(record || getNull);
+				}.bind(this));
+			}.bind(this)
+		);
+	}),
 	_getComputed: d(function (objId, keyPath) {
 		return this.collection.invokeAsync('find', { _id: '=' + keyPath + ':' + objId })(
 			function (cursor) {
@@ -154,18 +156,22 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			}
 		);
 	}),
-	_storeComputed: d(function (objId, keyPath, data) {
-		return this.collection.invokeAsync('update', { _id: '=' + keyPath + ':' + objId }, {
-			stamp: data.stamp,
-			value: data.value
-		}, updateOpts);
-	}),
 	_getReduced: d(function (key) {
 		return this.collection.invokeAsync('find', { _id: '_' + key })(function (cursor) {
 			return cursor.nextPromised()(function (record) {
 				return cursor.closePromised()(record || getNull);
 			});
 		});
+	}),
+	_storeDirect: d(function (ownerId, path, data) {
+		return this.collection.invokeAsync('update', { _id: ownerId + (path ? ('/' + path) : '') },
+			{ value: data.value, stamp: data.stamp }, updateOpts);
+	}),
+	_storeComputed: d(function (objId, keyPath, data) {
+		return this.collection.invokeAsync('update', { _id: '=' + keyPath + ':' + objId }, {
+			stamp: data.stamp,
+			value: data.value
+		}, updateOpts);
 	}),
 	_storeReduced: d(function (key, data) {
 		return this.collection.invokeAsync('update', { _id: '_' + key }, data, updateOpts);
