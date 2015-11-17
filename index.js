@@ -31,13 +31,16 @@ var buildUrl = function (conf) {
 	return url + '/' + conf.database;
 };
 var MongoDriver = module.exports = function (dbjs, data) {
+	var collection;
 	if (!(this instanceof MongoDriver)) return new MongoDriver(dbjs, data);
 	ensureObject(data);
 	ensureString(data.database);
-	ensureString(data.collection);
+	collection = ensureString(data.collection);
 	PersistenceDriver.call(this, dbjs, data);
 	this.mongoDb = connect(buildUrl(data)).aside(null, this.emitError);
-	this.collection = this.mongoDb.invokeAsync('collection', data.collection);
+	this.directDb = this.mongoDb.invokeAsync('collection', collection);
+	this.computedDb = this.mongoDb.invokeAsync('collection', collection + '-computed');
+	this.reducedDb = this.mongoDb.invokeAsync('collection', collection + '-reduced');
 };
 setPrototypeOf(MongoDriver, PersistenceDriver);
 
@@ -65,11 +68,11 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 
 	// Reduced data
 	__getReducedNs: d(function (ns, keyPaths) {
-		var query = { _id: { $gte: '_' + ns, $lt: '_' + ns + '/\uffff' } };
-		return this.collection.invokeAsync('find', query)(function (cursor) {
+		var query = { _id: { $gte: ns, $lt: ns + '/\uffff' } };
+		return this.reducedDb.invokeAsync('find', query)(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
 				var result = create(null);
-				records.forEach(function (record) { result[record._id.slice(1)] = record; });
+				records.forEach(function (record) { result[record._id] = record; });
 				return cursor.closePromised()(result);
 			}.bind(this));
 		}.bind(this));
@@ -77,20 +80,16 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 
 	// Size tracking
 	__searchDirect: d(function (callback) {
-		return this.collection.invokeAsync('find')(function (cursor) {
+		return this.directDb.invokeAsync('find')(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
-				records.forEach(function (record) {
-					if (record._id[0] === '=') return; // computed record
-					if (record._id[0] === '_') return; // reduced record
-					callback(record._id, record);
-				});
+				records.forEach(function (record) { callback(record._id, record); });
 				return cursor.closePromised()(getUndefined);
 			}.bind(this));
 		}.bind(this));
 	}),
 	__searchComputed: d(function (keyPath, callback) {
-		var query = { _id: { $gte: '=' + keyPath + ':', $lt: '=' + keyPath + ':\uffff' } };
-		return this.collection.invokeAsync('find', query)(function (cursor) {
+		var query = { _id: { $gt: keyPath + ':', $lt: keyPath + ':\uffff' } };
+		return this.computedDb.invokeAsync('find', query)(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
 				records.forEach(function (record) {
 					callback(record._id.slice(record._id.lastIndexOf(':') + 1), record);
@@ -103,43 +102,60 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	// Storage import/export
 	__exportAll: d(function (destDriver) {
 		var count = 0;
-		var promise = this.collection.invokeAsync('find')(function (cursor) {
-			return cursor.toArrayPromised()(function (records) {
-				return cursor.closePromised()(deferred.map(records, function (record) {
-					var index, id, cat, ns, path;
-					if (!(++count % 1000)) promise.emit('progress');
-					if (record._id[0] === '=') {
-						cat = 'computed';
-						id = record._id.slice(1);
-						index = id.lastIndexOf(':');
-						ns = id.slice(0, index);
-						path = id.slice(index + 1);
-					} else {
-						if (record._id[0] === '_') {
-							cat = 'reduced';
-							id = record._id.slice(1);
-						} else {
-							id = record._id;
-							cat = 'direct';
-						}
-						index = id.indexOf('/');
-						ns = (index === -1) ? id : id.slice(0, index);
-						path = (index === -1) ? null : id.slice(index + 1);
-					}
-					return destDriver._storeRaw(cat, ns, path, record);
-				}, this));
-			}.bind(this));
-		}.bind(this));
+		var promise = deferred(
+			this.directDb.invokeAsync('find')(function (cursor) {
+				return cursor.toArrayPromised()(function (records) {
+					return cursor.closePromised()(deferred.map(records, function (record) {
+						var index, ns, path;
+						if (!(++count % 1000)) promise.emit('progress');
+						index = record._id.indexOf('/');
+						ns = (index === -1) ? record._id : record._id.slice(0, index);
+						path = (index === -1) ? null : record._id.slice(index + 1);
+						return destDriver._storeRaw('direct', ns, path, record);
+					}, this));
+				}.bind(this));
+			}.bind(this)),
+			this.computedDb.invokeAsync('find')(function (cursor) {
+				return cursor.toArrayPromised()(function (records) {
+					return cursor.closePromised()(deferred.map(records, function (record) {
+						var index, ns, path;
+						if (!(++count % 1000)) promise.emit('progress');
+						index = record._id.lastIndexOf(':');
+						ns = record._id.slice(0, index);
+						path = record._id.slice(index + 1);
+						return destDriver._storeRaw('computed', ns, path, record);
+					}, this));
+				}.bind(this));
+			}.bind(this)),
+			this.reducedDb.invokeAsync('find')(function (cursor) {
+				return cursor.toArrayPromised()(function (records) {
+					return cursor.closePromised()(deferred.map(records, function (record) {
+						var index, ns, path;
+						if (!(++count % 1000)) promise.emit('progress');
+						index = record._id.indexOf('/');
+						ns = (index === -1) ? record._id : record._id.slice(0, index);
+						path = (index === -1) ? null : record._id.slice(index + 1);
+						return destDriver._storeRaw('reduced', ns, path, record);
+					}, this));
+				}.bind(this));
+			}.bind(this))
+		);
 		return promise;
 	}),
-	__clear: d(function () { return this.collection.invokeAsync('deleteMany'); }),
+	__clear: d(function () {
+		return deferred(
+			this.directDb.invokeAsync('deleteMany'),
+			this.computedDb.invokeAsync('deleteMany'),
+			this.reducedDb.invokeAsync('deleteMany')
+		);
+	}),
 
 	// Connection related
 	__close: d(function () { return this.mongoDb.invokeAsync('close'); }),
 
 	// Driver specific
 	_getDirect: d(function (ownerId, path) {
-		return this.collection.invokeAsync('find', { _id: ownerId + (path ? ('/' + path) : '') })(
+		return this.directDb.invokeAsync('find', { _id: ownerId + (path ? ('/' + path) : '') })(
 			function (cursor) {
 				return cursor.nextPromised()(function (record) {
 					return cursor.closePromised()(record || getNull);
@@ -148,7 +164,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		);
 	}),
 	_getComputed: d(function (objId, keyPath) {
-		return this.collection.invokeAsync('find', { _id: '=' + keyPath + ':' + objId })(
+		return this.computedDb.invokeAsync('find', { _id: keyPath + ':' + objId })(
 			function (cursor) {
 				return cursor.nextPromised()(function (record) {
 					return cursor.closePromised()(record || getNull);
@@ -157,33 +173,31 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		);
 	}),
 	_getReduced: d(function (key) {
-		return this.collection.invokeAsync('find', { _id: '_' + key })(function (cursor) {
+		return this.reducedDb.invokeAsync('find', { _id: key })(function (cursor) {
 			return cursor.nextPromised()(function (record) {
 				return cursor.closePromised()(record || getNull);
 			});
 		});
 	}),
 	_storeDirect: d(function (ownerId, path, data) {
-		return this.collection.invokeAsync('update', { _id: ownerId + (path ? ('/' + path) : '') },
+		return this.directDb.invokeAsync('update', { _id: ownerId + (path ? ('/' + path) : '') },
 			{ value: data.value, stamp: data.stamp }, updateOpts);
 	}),
 	_storeComputed: d(function (objId, keyPath, data) {
-		return this.collection.invokeAsync('update', { _id: '=' + keyPath + ':' + objId }, {
+		return this.computedDb.invokeAsync('update', { _id: keyPath + ':' + objId }, {
 			stamp: data.stamp,
 			value: data.value
 		}, updateOpts);
 	}),
 	_storeReduced: d(function (key, data) {
-		return this.collection.invokeAsync('update', { _id: '_' + key }, data, updateOpts);
+		return this.reducedDb.invokeAsync('update', { _id: key }, data, updateOpts);
 	}),
 	_loadDirect: d(function (query, filter) {
-		return this.collection.invokeAsync('find', query)(function (cursor) {
+		return this.directDb.invokeAsync('find', query)(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
 				var result = create(null);
 				records.forEach(function (record) {
 					var index, ownerId, path;
-					if (record._id[0] === '=') return; // computed record
-					if (record._id[0] === '_') return; // reduced record
 					if (filter) {
 						index = record._id.indexOf('/');
 						ownerId = (index !== -1) ? record._id.slice(0, index) : record._id;
