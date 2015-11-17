@@ -47,7 +47,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	// Any data
 	__getRaw: d(function (cat, ns, path) {
 		if (cat === 'reduced') return this._getReduced(ns + (path ? ('/' + path) : ''));
-		if (cat === 'computed') return this._getIndexedValue(path, ns);
+		if (cat === 'computed') return this._getComputed(path, ns);
 		return this.collection.invokeAsync('find', { _id: ns + (path ? ('/' + path) : '') })(
 			function (cursor) {
 				return cursor.nextPromised()(function (record) {
@@ -145,7 +145,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	__close: d(function () { return this.mongoDb.invokeAsync('close'); }),
 
 	// Driver specific
-	_getIndexedValue: d(function (objId, keyPath) {
+	_getComputed: d(function (objId, keyPath) {
 		return this.collection.invokeAsync('find', { _id: '=' + keyPath + ':' + objId })(
 			function (cursor) {
 				return cursor.nextPromised()(function (record) {
