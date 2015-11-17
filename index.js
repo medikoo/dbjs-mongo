@@ -63,6 +63,18 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	}),
 	__getDirectAll: d(function () { return this._loadDirect(); }),
 
+	// Reduced data
+	__getReducedNs: d(function (ns, keyPaths) {
+		var query = { _id: { $gte: '_' + ns, $lt: '_' + ns + '/\uffff' } };
+		return this.collection.invokeAsync('find', query)(function (cursor) {
+			return cursor.toArrayPromised()(function (records) {
+				var result = create(null);
+				records.forEach(function (record) { result[record._id.slice(1)] = record; });
+				return cursor.closePromised()(result);
+			}.bind(this));
+		}.bind(this));
+	}),
+
 	// Size tracking
 	__searchDirect: d(function (callback) {
 		return this.collection.invokeAsync('find')(function (cursor) {
@@ -86,18 +98,6 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 				return cursor.closePromised()(getUndefined);
 			});
 		});
-	}),
-
-	// Reduced data
-	__getReducedNs: d(function (ns, keyPaths) {
-		var query = { _id: { $gte: '_' + ns, $lt: '_' + ns + '/\uffff' } };
-		return this.collection.invokeAsync('find', query)(function (cursor) {
-			return cursor.toArrayPromised()(function (records) {
-				var result = create(null);
-				records.forEach(function (record) { result[record._id.slice(1)] = record; });
-				return cursor.closePromised()(result);
-			}.bind(this));
-		}.bind(this));
 	}),
 
 	// Storage import/export
