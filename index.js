@@ -56,10 +56,6 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			}.bind(this)
 		);
 	}),
-	__getRawObject: d(function (objId, keyPaths) {
-		return this._loadDirect({ _id: { $gte: objId, $lt: objId + '/\uffff' } },
-			keyPaths && function (ownerId, path) { return keyPaths.has(resolveKeyPath(path)); });
-	}),
 	__storeRaw: d(function (cat, ns, path, data) {
 		if (cat === 'reduced') return this._storeReduced(ns + (path ? ('/' + path) : ''), data);
 		if (cat === 'computed') return this._storeIndexedValue(path, ns, data);
@@ -68,7 +64,11 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	}),
 
 	// Database data
-	__getRawAllDirect: d(function () { return this._loadDirect(); }),
+	__getDirectObject: d(function (objId, keyPaths) {
+		return this._loadDirect({ _id: { $gte: objId, $lt: objId + '/\uffff' } },
+			keyPaths && function (ownerId, path) { return keyPaths.has(resolveKeyPath(path)); });
+	}),
+	__getDirectAll: d(function () { return this._loadDirect(); }),
 
 	// Size tracking
 	__searchDirect: d(function (callback) {
@@ -83,7 +83,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			}.bind(this));
 		}.bind(this));
 	}),
-	__searchIndex: d(function (keyPath, callback) {
+	__searchComputed: d(function (keyPath, callback) {
 		var query = { _id: { $gte: '=' + keyPath + ':', $lt: '=' + keyPath + ':\uffff' } };
 		return this.collection.invokeAsync('find', query)(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
