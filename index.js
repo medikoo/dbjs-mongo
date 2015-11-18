@@ -57,7 +57,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		return this._getDirect(ns, path);
 	}),
 	__storeRaw: d(function (cat, ns, path, data) {
-		if (cat === 'reduced') return this._storeReduced(ns + (path ? ('/' + path) : ''), data);
+		if (cat === 'reduced') return this._storeReduced(ns, path, data);
 		if (cat === 'computed') return this._storeComputed(path, ns, data);
 		return this._storeDirect(ns, path, data);
 	}),
@@ -223,8 +223,9 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		return this.computedDb.invokeAsync('update', { _id: keyPath + ':' + ownerId },
 			record, updateOpts);
 	}),
-	_storeReduced: d(function (key, data) {
-		return this.reducedDb.invokeAsync('update', { _id: key }, data, updateOpts);
+	_storeReduced: d(function (ns, keyPath, data) {
+		return this.reducedDb.invokeAsync('update', { _id: ns + (keyPath ? ('/' + keyPath) : '') },
+			data, updateOpts);
 	}),
 	_loadDirect: d(function (query, filter) {
 		return this.directDb.invokeAsync('find', query)(function (cursor) {
