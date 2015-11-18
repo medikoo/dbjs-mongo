@@ -99,11 +99,13 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		}.bind(this));
 	}),
 	__searchComputed: d(function (keyPath, callback) {
-		var query = { _id: { $gt: keyPath + ':', $lt: keyPath + ':\uffff' } };
-		return this.computedDb.invokeAsync('find', query)(function (cursor) {
+		return this.computedDb.invokeAsync('find', { keyPath: keyPath })(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
 				records.forEach(function (record) {
-					callback(record._id.slice(record._id.lastIndexOf(':') + 1), record);
+					callback(record.ownerId, {
+						value: record.unserialized ? serializeValue(record.value) : record.value,
+						stamp: record.stamp
+					});
 				});
 				return cursor.closePromised()(getUndefined);
 			});
@@ -128,12 +130,11 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			this.computedDb.invokeAsync('find')(function (cursor) {
 				return cursor.toArrayPromised()(function (records) {
 					return cursor.closePromised()(deferred.map(records, function (record) {
-						var index, ns, path;
 						if (!(++count % 1000)) promise.emit('progress');
-						index = record._id.lastIndexOf(':');
-						ns = record._id.slice(0, index);
-						path = record._id.slice(index + 1);
-						return destDriver._storeRaw('computed', ns, path, record);
+						return destDriver._storeRaw('computed', record.keyPath, record.ownerId, {
+							value: record.unserialized ? serializeValue(record.value) : record.value,
+							stamp: record.stamp
+						});
 					}, this));
 				}.bind(this));
 			}.bind(this)),
@@ -180,7 +181,10 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		return this.computedDb.invokeAsync('find', { _id: keyPath + ':' + ownerId })(
 			function (cursor) {
 				return cursor.nextPromised()(function (record) {
-					return cursor.closePromised()(record || getNull);
+					return cursor.closePromised()(record ? {
+						value: record.unserialized ? serializeValue(record.value) : record.value,
+						stamp: record.stamp
+					} : getNull);
 				});
 			}
 		);
@@ -208,10 +212,16 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			record, updateOpts);
 	}),
 	_storeComputed: d(function (ownerId, keyPath, data) {
-		return this.computedDb.invokeAsync('update', { _id: keyPath + ':' + ownerId }, {
-			stamp: data.stamp,
-			value: data.value
-		}, updateOpts);
+		var unserialized = Boolean(data.value && isUnserializable(data.value[0]));
+		var record = {
+			ownerId: ownerId,
+			keyPath: keyPath,
+			value: unserialized ? unserializeValue(data.value) : data.value,
+			stamp: data.stamp
+		};
+		if (unserialized) record.unserialized = true;
+		return this.computedDb.invokeAsync('update', { _id: keyPath + ':' + ownerId },
+			record, updateOpts);
 	}),
 	_storeReduced: d(function (key, data) {
 		return this.reducedDb.invokeAsync('update', { _id: key }, data, updateOpts);
