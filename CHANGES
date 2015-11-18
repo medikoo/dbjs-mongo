@@ -1,3 +1,8 @@
+v0.0.8  --  2015.11.18
+* Upgrade up to changes in dbjs-persistence
+* Use separate collections for direct, computed and reduced data
+* Store data in format friendly for direct mongodb processing
+
 v0.0.7  --  2015.10.25
 * Upgrade up to changes in dbjs-persistence
 
