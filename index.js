@@ -4,6 +4,8 @@ var constant          = require('es5-ext/function/constant')
   , setPrototypeOf    = require('es5-ext/object/set-prototype-of')
   , ensureString      = require('es5-ext/object/validate-stringifiable-value')
   , ensureObject      = require('es5-ext/object/valid-object')
+  , serializeValue    = require('dbjs/_setup/serialize/value')
+  , unserializeValue  = require('dbjs/_setup/unserialize/value')
   , resolveKeyPath    = require('dbjs/_setup/utils/resolve-key-path')
   , d                 = require('d')
   , deferred          = require('deferred')
@@ -14,6 +16,7 @@ var constant          = require('es5-ext/function/constant')
   , create = Object.create, promisify = deferred.promisify
   , getUndefined = constant(undefined), getNull = constant(null)
   , connect = promisify(MongoClient.connect)
+  , isUnserializable = RegExp.prototype.test.bind(/[01234]/)
   , updateOpts = { upsert: true };
 
 Object.defineProperties(MongoCursor.prototype, {
@@ -85,7 +88,12 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	__searchDirect: d(function (callback) {
 		return this.directDb.invokeAsync('find')(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
-				records.forEach(function (record) { callback(record._id, record); });
+				records.forEach(function (record) {
+					callback(record._id, {
+						value: record.unserialized ? serializeValue(record.value) : record.value,
+						stamp: record.stamp
+					});
+				});
 				return cursor.closePromised()(getUndefined);
 			}.bind(this));
 		}.bind(this));
@@ -109,12 +117,11 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			this.directDb.invokeAsync('find')(function (cursor) {
 				return cursor.toArrayPromised()(function (records) {
 					return cursor.closePromised()(deferred.map(records, function (record) {
-						var index, ns, path;
 						if (!(++count % 1000)) promise.emit('progress');
-						index = record._id.indexOf('/');
-						ns = (index === -1) ? record._id : record._id.slice(0, index);
-						path = (index === -1) ? null : record._id.slice(index + 1);
-						return destDriver._storeRaw('direct', ns, path, record);
+						return destDriver._storeRaw('direct', record.ownerId, record.path, {
+							value: record.unserialized ? serializeValue(record.value) : record.value,
+							stamp: record.stamp
+						});
 					}, this));
 				}.bind(this));
 			}.bind(this)),
@@ -161,7 +168,10 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		return this.directDb.invokeAsync('find', { _id: ownerId + (path ? ('/' + path) : '') })(
 			function (cursor) {
 				return cursor.nextPromised()(function (record) {
-					return cursor.closePromised()(record || getNull);
+					return cursor.closePromised()(record ? {
+						value: record.unserialized ? serializeValue(record.value) : record.value,
+						stamp: record.stamp
+					} : getNull);
 				}.bind(this));
 			}.bind(this)
 		);
@@ -183,8 +193,19 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		});
 	}),
 	_storeDirect: d(function (ownerId, path, data) {
+		var unserialized = Boolean(data.value && isUnserializable(data.value[0]));
+		var record = {
+			ownerId: ownerId,
+			value: unserialized ? unserializeValue(data.value) : data.value,
+			stamp: data.stamp
+		};
+		if (path) {
+			record.path = path;
+			record.keyPath = resolveKeyPath(ownerId + '/' + path);
+		}
+		if (unserialized) record.unserialized = true;
 		return this.directDb.invokeAsync('update', { _id: ownerId + (path ? ('/' + path) : '') },
-			{ value: data.value, stamp: data.stamp }, updateOpts);
+			record, updateOpts);
 	}),
 	_storeComputed: d(function (objId, keyPath, data) {
 		return this.computedDb.invokeAsync('update', { _id: keyPath + ':' + objId }, {
@@ -200,14 +221,11 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			return cursor.toArrayPromised()(function (records) {
 				var result = create(null);
 				records.forEach(function (record) {
-					var index, ownerId, path;
-					if (filter) {
-						index = record._id.indexOf('/');
-						ownerId = (index !== -1) ? record._id.slice(0, index) : record._id;
-						path = (index !== -1) ? record._id.slice(index + 1) : null;
-						if (!filter(ownerId, path)) return; // filtered
-					}
-					result[record._id] = record;
+					if (filter && !filter(record.ownerId, record.path)) return; // filtered
+					result[record._id] = {
+						value: record.unserialized ? serializeValue(record.value) : record.value,
+						stamp: record.stamp
+					};
 				});
 				return cursor.closePromised()(result);
 			}.bind(this));
