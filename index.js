@@ -16,7 +16,7 @@ var constant          = require('es5-ext/function/constant')
   , create = Object.create, promisify = deferred.promisify
   , getUndefined = constant(undefined), getNull = constant(null)
   , connect = promisify(MongoClient.connect)
-  , isUnserializable = RegExp.prototype.test.bind(/[01234]/)
+  , isUnserializable = RegExp.prototype.test.bind(/[0123456]/)
   , updateOpts = { upsert: true };
 
 Object.defineProperties(MongoCursor.prototype, {
