@@ -62,7 +62,10 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	// Database data
 	__getDirectObject: d(function (objId, keyPaths) {
 		return this._loadDirect({ _id: { $gte: objId, $lt: objId + '/\uffff' } },
-			keyPaths && function (ownerId, path) { return keyPaths.has(resolveKeyPath(path)); });
+			keyPaths && function (ownerId, path) {
+				if (!path) return true;
+				return keyPaths.has(resolveKeyPath(ownerId + '/' + path));
+			});
 	}),
 	__getDirectAll: d(function () { return this._loadDirect(); }),
 
