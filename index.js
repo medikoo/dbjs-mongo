@@ -63,8 +63,8 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	}),
 
 	// Database data
-	__getDirectObject: d(function (objId, keyPaths) {
-		return this._loadDirect({ ownerId: objId },
+	__getDirectObject: d(function (ownerId, keyPaths) {
+		return this._loadDirect({ ownerId: ownerId },
 			keyPaths && function (ownerId, path) {
 				if (!path) return true;
 				return keyPaths.has(resolveKeyPath(ownerId + '/' + path));
@@ -176,8 +176,8 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			}.bind(this)
 		);
 	}),
-	_getComputed: d(function (objId, keyPath) {
-		return this.computedDb.invokeAsync('find', { _id: keyPath + ':' + objId })(
+	_getComputed: d(function (ownerId, keyPath) {
+		return this.computedDb.invokeAsync('find', { _id: keyPath + ':' + ownerId })(
 			function (cursor) {
 				return cursor.nextPromised()(function (record) {
 					return cursor.closePromised()(record || getNull);
@@ -207,8 +207,8 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		return this.directDb.invokeAsync('update', { _id: ownerId + (path ? ('/' + path) : '') },
 			record, updateOpts);
 	}),
-	_storeComputed: d(function (objId, keyPath, data) {
-		return this.computedDb.invokeAsync('update', { _id: keyPath + ':' + objId }, {
+	_storeComputed: d(function (ownerId, keyPath, data) {
+		return this.computedDb.invokeAsync('update', { _id: keyPath + ':' + ownerId }, {
 			stamp: data.stamp,
 			value: data.value
 		}, updateOpts);
