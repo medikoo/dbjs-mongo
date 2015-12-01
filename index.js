@@ -2,6 +2,7 @@
 
 var constant          = require('es5-ext/function/constant')
   , setPrototypeOf    = require('es5-ext/object/set-prototype-of')
+  , toArray           = require('es5-ext/object/to-array')
   , ensureString      = require('es5-ext/object/validate-stringifiable-value')
   , ensureObject      = require('es5-ext/object/valid-object')
   , serializeValue    = require('dbjs/_setup/serialize/value')
@@ -17,7 +18,8 @@ var constant          = require('es5-ext/function/constant')
   , getUndefined = constant(undefined), getNull = constant(null)
   , connect = promisify(MongoClient.connect)
   , isUnserializable = RegExp.prototype.test.bind(/[01234]/)
-  , updateOpts = { upsert: true };
+  , updateOpts = { upsert: true }
+  , byStamp = function (a, b) { return this[a] - this[b]; };
 
 Object.defineProperties(MongoCursor.prototype, {
 	nextPromised: d(promisify(MongoCursor.prototype.next)),
@@ -62,7 +64,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		return this._storeDirect(ns, path, data);
 	}),
 
-	// Database data
+	// Direct data
 	__getDirectObject: d(function (ownerId, keyPaths) {
 		return this._loadDirect({ ownerId: ownerId },
 			keyPaths && function (ownerId, path) {
@@ -70,10 +72,26 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 				return keyPaths.has(resolveKeyPath(ownerId + '/' + path));
 			});
 	}),
+	__getDirectAllObjectIds: d(function () {
+		return this.directDb.invokeAsync('find')(function (cursor) {
+			return cursor.toArrayPromised()(function (records) {
+				var data = create(null);
+				records.forEach(function (record) {
+					if (!record.keyPath) {
+						data[record.ownerId] = record.stamp;
+						return;
+					}
+					if (!data[record.ownerId]) data[record.ownerId] = 0;
+				});
+				return cursor.closePromised()(toArray(data,
+					function (stamp, id) { return id; }, this, byStamp));
+			}.bind(this));
+		}.bind(this));
+	}),
 	__getDirectAll: d(function () { return this._loadDirect(); }),
 
 	// Reduced data
-	__getReducedNs: d(function (ns, keyPaths) {
+	__getReducedObject: d(function (ns, keyPaths) {
 		return this.reducedDb.invokeAsync('find', { ns: ns })(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
 				var result = create(null);
@@ -89,11 +107,16 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	}),
 
 	// Size tracking
-	__searchDirect: d(function (callback) {
+	__searchDirect: d(function (keyPath, callback) {
 		return this.directDb.invokeAsync('find')(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
-				records.forEach(function (record) {
-					callback(record._id, {
+				records.some(function (record) {
+					if (!keyPath) {
+						if (record.keyPath) return;
+					} else if (keyPath !== record.keyPath) {
+						return;
+					}
+					return callback(record._id, {
 						value: record.unserialized ? serializeValue(record.value) : record.value,
 						stamp: record.stamp
 					});
@@ -105,7 +128,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	__searchComputed: d(function (keyPath, callback) {
 		return this.computedDb.invokeAsync('find', { keyPath: keyPath })(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
-				records.forEach(function (record) {
+				records.some(function (record) {
 					callback(record.ownerId, {
 						value: record.unserialized ? serializeValue(record.value) : record.value,
 						stamp: record.stamp
