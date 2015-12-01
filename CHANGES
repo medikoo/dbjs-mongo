@@ -1,3 +1,6 @@
+v0.0.9  --  2015.12.01
+* Update up to changes in dbjs-persistence
+
 v0.0.8  --  2015.11.18
 * Upgrade up to changes in dbjs-persistence
 * Use separate collections for direct, computed and reduced data
