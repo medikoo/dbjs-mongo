@@ -1,3 +1,6 @@
+v0.0.11  --  2015.12.29
+* Update up to changes in dbjs-persistence
+
 v0.0.10  --  2015.12.01
 * Update to use v0.0.12 of dbjs-persistence
 
