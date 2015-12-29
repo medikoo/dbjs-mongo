@@ -11,9 +11,9 @@ try {
 }
 
 if (env) {
-	env.collection = 'dbjs-mongo-test-' + Date.now();
+	env.collection = 'dbjs-mongo-test-' + (new Date()).toISOString();
 	copyEnv = Object.create(env);
-	copyEnv.collection = 'dbjs-mongo-test-copy-' + Date.now();
+	copyEnv.collection = 'dbjs-mongo-test-copy-' + (new Date()).toISOString();
 
 	tests = getTests(env, copyEnv);
 }
