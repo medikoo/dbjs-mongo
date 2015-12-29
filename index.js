@@ -2,7 +2,6 @@
 
 var constant          = require('es5-ext/function/constant')
   , setPrototypeOf    = require('es5-ext/object/set-prototype-of')
-  , toArray           = require('es5-ext/object/to-array')
   , ensureString      = require('es5-ext/object/validate-stringifiable-value')
   , ensureObject      = require('es5-ext/object/valid-object')
   , serializeValue    = require('dbjs/_setup/serialize/value')
@@ -18,8 +17,7 @@ var constant          = require('es5-ext/function/constant')
   , getUndefined = constant(undefined), getNull = constant(null)
   , connect = promisify(MongoClient.connect)
   , isUnserializable = RegExp.prototype.test.bind(/[01234]/)
-  , updateOpts = { upsert: true }
-  , byStamp = function (a, b) { return this[a] - this[b]; };
+  , updateOpts = { upsert: true };
 
 Object.defineProperties(MongoCursor.prototype, {
 	nextPromised: d(promisify(MongoCursor.prototype.next)),
@@ -77,15 +75,10 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			return cursor.toArrayPromised()(function (records) {
 				var data = create(null);
 				records.forEach(function (record) {
-					if (!record.keyPath) {
-						data[record.ownerId] = record.stamp;
-						return;
-					}
-					if (!data[record.ownerId]) data[record.ownerId] = 0;
+					if (!record.keyPath) data[record.ownerId] = record;
 				});
-				return cursor.closePromised()(toArray(data,
-					function (stamp, id) { return id; }, this, byStamp));
-			}.bind(this));
+				return cursor.closePromised()(data);
+			});
 		}.bind(this));
 	}),
 	__getDirectAll: d(function () { return this._loadDirect_(); }),
