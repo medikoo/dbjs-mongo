@@ -54,19 +54,19 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 
 	// Any data
 	__getRaw: d(function (cat, ns, path) {
-		if (cat === 'reduced') return this._getReduced(ns + (path ? ('/' + path) : ''));
-		if (cat === 'computed') return this._getComputed(path, ns);
-		return this._getDirect(ns, path);
+		if (cat === 'reduced') return this._getReduced_(ns + (path ? ('/' + path) : ''));
+		if (cat === 'computed') return this._getComputed_(path, ns);
+		return this._getDirect_(ns, path);
 	}),
 	__storeRaw: d(function (cat, ns, path, data) {
-		if (cat === 'reduced') return this._storeReduced(ns, path, data);
-		if (cat === 'computed') return this._storeComputed(path, ns, data);
-		return this._storeDirect(ns, path, data);
+		if (cat === 'reduced') return this._storeReduced_(ns, path, data);
+		if (cat === 'computed') return this._storeComputed_(path, ns, data);
+		return this._storeDirect_(ns, path, data);
 	}),
 
 	// Direct data
 	__getDirectObject: d(function (ownerId, keyPaths) {
-		return this._loadDirect({ ownerId: ownerId },
+		return this._loadDirect_({ ownerId: ownerId },
 			keyPaths && function (ownerId, path) {
 				if (!path) return true;
 				return keyPaths.has(resolveKeyPath(ownerId + '/' + path));
@@ -88,7 +88,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			}.bind(this));
 		}.bind(this));
 	}),
-	__getDirectAll: d(function () { return this._loadDirect(); }),
+	__getDirectAll: d(function () { return this._loadDirect_(); }),
 
 	// Reduced data
 	__getReducedObject: d(function (ns, keyPaths) {
@@ -191,7 +191,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	__close: d(function () { return this.mongoDb.invokeAsync('close'); }),
 
 	// Driver specific
-	_getDirect: d(function (ownerId, path) {
+	_getDirect_: d(function (ownerId, path) {
 		return this.directDb.invokeAsync('find', { _id: ownerId + (path ? ('/' + path) : '') })(
 			function (cursor) {
 				return cursor.nextPromised()(function (record) {
@@ -203,7 +203,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			}.bind(this)
 		);
 	}),
-	_getComputed: d(function (ownerId, keyPath) {
+	_getComputed_: d(function (ownerId, keyPath) {
 		return this.computedDb.invokeAsync('find', { _id: keyPath + ':' + ownerId })(
 			function (cursor) {
 				return cursor.nextPromised()(function (record) {
@@ -215,7 +215,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			}
 		);
 	}),
-	_getReduced: d(function (key) {
+	_getReduced_: d(function (key) {
 		return this.reducedDb.invokeAsync('find', { _id: key })(function (cursor) {
 			return cursor.nextPromised()(function (record) {
 				return cursor.closePromised()(record ? {
@@ -225,7 +225,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			});
 		});
 	}),
-	_storeDirect: d(function (ownerId, path, data) {
+	_storeDirect_: d(function (ownerId, path, data) {
 		var unserialized = Boolean(data.value && isUnserializable(data.value[0]));
 		var record = {
 			ownerId: ownerId,
@@ -240,7 +240,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		return this.directDb.invokeAsync('update', { _id: ownerId + (path ? ('/' + path) : '') },
 			record, updateOpts);
 	}),
-	_storeComputed: d(function (ownerId, keyPath, data) {
+	_storeComputed_: d(function (ownerId, keyPath, data) {
 		var unserialized = Boolean(data.value && isUnserializable(data.value[0]));
 		var record = {
 			ownerId: ownerId,
@@ -252,7 +252,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		return this.computedDb.invokeAsync('update', { _id: keyPath + ':' + ownerId },
 			record, updateOpts);
 	}),
-	_storeReduced: d(function (ns, path, data) {
+	_storeReduced_: d(function (ns, path, data) {
 		var unserialized = Boolean(data.value && isUnserializable(data.value[0]));
 		var record = {
 			ns: ns,
@@ -264,7 +264,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 		return this.reducedDb.invokeAsync('update', { _id: ns + (path ? ('/' + path) : '') },
 			record, updateOpts);
 	}),
-	_loadDirect: d(function (query, filter) {
+	_loadDirect_: d(function (query, filter) {
 		return this.directDb.invokeAsync('find', query)(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
 				var result = create(null);
