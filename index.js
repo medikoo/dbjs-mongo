@@ -63,14 +63,14 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	}),
 
 	// Direct data
-	__getDirectObject: d(function (ownerId, keyPaths) {
+	__getObject: d(function (ownerId, keyPaths) {
 		return this._loadDirect_({ ownerId: ownerId },
 			keyPaths && function (ownerId, path) {
 				if (!path) return true;
 				return keyPaths.has(resolveKeyPath(ownerId + '/' + path));
 			});
 	}),
-	__getDirectAllObjectIds: d(function () {
+	__getAllObjectIds: d(function () {
 		return this.directDb.invokeAsync('find')(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
 				var data = create(null);
@@ -81,7 +81,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 			});
 		}.bind(this));
 	}),
-	__getDirectAll: d(function () { return this._loadDirect_(); }),
+	__getAll: d(function () { return this._loadDirect_(); }),
 
 	// Reduced data
 	__getReducedObject: d(function (ns, keyPaths) {
@@ -100,7 +100,7 @@ MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
 	}),
 
 	// Size tracking
-	__searchDirect: d(function (keyPath, callback) {
+	__search: d(function (keyPath, callback) {
 		return this.directDb.invokeAsync('find')(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
 				records.some(function (record) {
