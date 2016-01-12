@@ -1,23 +1,19 @@
 'use strict';
 
-var constant          = require('es5-ext/function/constant')
-  , setPrototypeOf    = require('es5-ext/object/set-prototype-of')
-  , ensureString      = require('es5-ext/object/validate-stringifiable-value')
-  , ensureObject      = require('es5-ext/object/valid-object')
-  , serializeValue    = require('dbjs/_setup/serialize/value')
-  , unserializeValue  = require('dbjs/_setup/unserialize/value')
-  , resolveKeyPath    = require('dbjs/_setup/utils/resolve-key-path')
-  , d                 = require('d')
-  , deferred          = require('deferred')
-  , MongoClient       = require('mongodb').MongoClient
-  , MongoCursor       = require('mongodb/lib/cursor')
-  , PersistenceDriver = require('dbjs-persistence/abstract')
+var setPrototypeOf = require('es5-ext/object/set-prototype-of')
+  , ensureObject   = require('es5-ext/object/valid-object')
+  , ensureString   = require('es5-ext/object/validate-stringifiable-value')
+  , d              = require('d')
+  , deferred       = require('deferred')
+  , Driver         = require('dbjs-persistence/driver')
+  , Mongo          = require('mongodb')
+  , Storage        = require('./storage')
 
-  , create = Object.create, promisify = deferred.promisify
-  , getUndefined = constant(undefined), getNull = constant(null)
-  , connect = promisify(MongoClient.connect)
-  , isUnserializable = RegExp.prototype.test.bind(/[01234]/)
-  , updateOpts = { upsert: true };
+  , isIdent = RegExp.prototype.test.bind(/^[a-z][a-z0-9A-Z]*$/)
+
+  , promisify = deferred.promisify
+  , MongoCursor = Mongo.Cursor, MongoClient = Mongo.MongoClient
+  , connect = promisify(MongoClient.connect);
 
 Object.defineProperties(MongoCursor.prototype, {
 	nextPromised: d(promisify(MongoCursor.prototype.next)),
@@ -31,245 +27,29 @@ var buildUrl = function (conf) {
 	url += (conf.host != null) ? conf.host : 'localhost';
 	url += ':';
 	url += (conf.port != null) ? conf.port : '27017';
-	return url + '/' + conf.database;
+	return url + '/' + conf.databaseName;
 };
-var MongoDriver = module.exports = function (dbjs, data) {
-	var collection;
-	if (!(this instanceof MongoDriver)) return new MongoDriver(dbjs, data);
+var MongoDriver = module.exports = Object.defineProperties(function (data) {
+	if (!(this instanceof MongoDriver)) return new MongoDriver(data);
 	ensureObject(data);
-	ensureString(data.database);
-	collection = ensureString(data.collection);
-	PersistenceDriver.call(this, dbjs, data);
-	this.mongoDb = connect(buildUrl(data)).aside(null, this.emitError);
-	this.directDb = this.mongoDb.invokeAsync('collection', collection);
-	this.computedDb = this.mongoDb.invokeAsync('collection', collection + '-computed');
-	this.reducedDb = this.mongoDb.invokeAsync('collection', collection + '-reduced');
-};
-setPrototypeOf(MongoDriver, PersistenceDriver);
+	ensureObject(data.mongo);
+	ensureString(data.mongo.database);
+	Driver.call(this, data);
+	this.mongoDb = connect(buildUrl(data.mongo)).aside(null, this.emitError);
+}, { storageClass: d(Storage) });
+setPrototypeOf(MongoDriver, Driver);
 
-MongoDriver.prototype = Object.create(PersistenceDriver.prototype, {
+MongoDriver.prototype = Object.create(Driver.prototype, {
 	constructor: d(MongoDriver),
 
-	// Any data
-	__getRaw: d(function (cat, ns, path) {
-		if (cat === 'reduced') return this._getReduced_(ns + (path ? ('/' + path) : ''));
-		if (cat === 'computed') return this._getComputed_(path, ns);
-		return this._getDirect_(ns, path);
+	__resolveAllStorages: d(function () {
+		return this.mongoDb.invokeAsync('collections')(function (collections) {
+			collections.forEach(function (collection) {
+				var name = collection.collectionName;
+				if (!isIdent(name)) return;
+				this.getStorage(name);
+			}, this);
+		}.bind(this))(Function.prototype);
 	}),
-	__storeRaw: d(function (cat, ns, path, data) {
-		if (cat === 'reduced') return this._storeReduced_(ns, path, data);
-		if (cat === 'computed') return this._storeComputed_(path, ns, data);
-		return this._storeDirect_(ns, path, data);
-	}),
-
-	// Direct data
-	__getObject: d(function (ownerId, keyPaths) {
-		return this._loadDirect_({ ownerId: ownerId },
-			keyPaths && function (ownerId, path) {
-				if (!path) return true;
-				return keyPaths.has(resolveKeyPath(ownerId + '/' + path));
-			});
-	}),
-	__getAllObjectIds: d(function () {
-		return this.directDb.invokeAsync('find')(function (cursor) {
-			return cursor.toArrayPromised()(function (records) {
-				var data = create(null);
-				records.forEach(function (record) {
-					if (!record.keyPath) data[record.ownerId] = record;
-				});
-				return cursor.closePromised()(data);
-			});
-		}.bind(this));
-	}),
-	__getAll: d(function () { return this._loadDirect_(); }),
-
-	// Reduced data
-	__getReducedObject: d(function (ns, keyPaths) {
-		return this.reducedDb.invokeAsync('find', { ns: ns })(function (cursor) {
-			return cursor.toArrayPromised()(function (records) {
-				var result = create(null);
-				records.forEach(function (record) {
-					result[record._id] = {
-						value: record.unserialized ? serializeValue(record.value) : record.value,
-						stamp: record.stamp
-					};
-				});
-				return cursor.closePromised()(result);
-			}.bind(this));
-		}.bind(this));
-	}),
-
-	// Size tracking
-	__search: d(function (keyPath, callback) {
-		return this.directDb.invokeAsync('find')(function (cursor) {
-			return cursor.toArrayPromised()(function (records) {
-				records.some(function (record) {
-					if (!keyPath) {
-						if (record.keyPath) return;
-					} else if (keyPath !== record.keyPath) {
-						return;
-					}
-					return callback(record._id, {
-						value: record.unserialized ? serializeValue(record.value) : record.value,
-						stamp: record.stamp
-					});
-				});
-				return cursor.closePromised()(getUndefined);
-			}.bind(this));
-		}.bind(this));
-	}),
-	__searchComputed: d(function (keyPath, callback) {
-		return this.computedDb.invokeAsync('find', { keyPath: keyPath })(function (cursor) {
-			return cursor.toArrayPromised()(function (records) {
-				records.some(function (record) {
-					callback(record.ownerId, {
-						value: record.unserialized ? serializeValue(record.value) : record.value,
-						stamp: record.stamp
-					});
-				});
-				return cursor.closePromised()(getUndefined);
-			});
-		});
-	}),
-
-	// Storage import/export
-	__exportAll: d(function (destDriver) {
-		var count = 0;
-		var promise = deferred(
-			this.directDb.invokeAsync('find')(function (cursor) {
-				return cursor.toArrayPromised()(function (records) {
-					return cursor.closePromised()(deferred.map(records, function (record) {
-						if (!(++count % 1000)) promise.emit('progress');
-						return destDriver._storeRaw('direct', record.ownerId, record.path, {
-							value: record.unserialized ? serializeValue(record.value) : record.value,
-							stamp: record.stamp
-						});
-					}, this));
-				}.bind(this));
-			}.bind(this)),
-			this.computedDb.invokeAsync('find')(function (cursor) {
-				return cursor.toArrayPromised()(function (records) {
-					return cursor.closePromised()(deferred.map(records, function (record) {
-						if (!(++count % 1000)) promise.emit('progress');
-						return destDriver._storeRaw('computed', record.keyPath, record.ownerId, {
-							value: record.unserialized ? serializeValue(record.value) : record.value,
-							stamp: record.stamp
-						});
-					}, this));
-				}.bind(this));
-			}.bind(this)),
-			this.reducedDb.invokeAsync('find')(function (cursor) {
-				return cursor.toArrayPromised()(function (records) {
-					return cursor.closePromised()(deferred.map(records, function (record) {
-						if (!(++count % 1000)) promise.emit('progress');
-						return destDriver._storeRaw('reduced', record.ns, record.path, {
-							value: record.unserialized ? serializeValue(record.value) : record.value,
-							stamp: record.stamp
-						});
-					}, this));
-				}.bind(this));
-			}.bind(this))
-		);
-		return promise;
-	}),
-	__clear: d(function () {
-		return deferred(
-			this.directDb.invokeAsync('deleteMany'),
-			this.computedDb.invokeAsync('deleteMany'),
-			this.reducedDb.invokeAsync('deleteMany')
-		);
-	}),
-
-	// Connection related
-	__close: d(function () { return this.mongoDb.invokeAsync('close'); }),
-
-	// Driver specific
-	_getDirect_: d(function (ownerId, path) {
-		return this.directDb.invokeAsync('find', { _id: ownerId + (path ? ('/' + path) : '') })(
-			function (cursor) {
-				return cursor.nextPromised()(function (record) {
-					return cursor.closePromised()(record ? {
-						value: record.unserialized ? serializeValue(record.value) : record.value,
-						stamp: record.stamp
-					} : getNull);
-				}.bind(this));
-			}.bind(this)
-		);
-	}),
-	_getComputed_: d(function (ownerId, keyPath) {
-		return this.computedDb.invokeAsync('find', { _id: keyPath + ':' + ownerId })(
-			function (cursor) {
-				return cursor.nextPromised()(function (record) {
-					return cursor.closePromised()(record ? {
-						value: record.unserialized ? serializeValue(record.value) : record.value,
-						stamp: record.stamp
-					} : getNull);
-				});
-			}
-		);
-	}),
-	_getReduced_: d(function (key) {
-		return this.reducedDb.invokeAsync('find', { _id: key })(function (cursor) {
-			return cursor.nextPromised()(function (record) {
-				return cursor.closePromised()(record ? {
-					value: record.unserialized ? serializeValue(record.value) : record.value,
-					stamp: record.stamp
-				} : getNull);
-			});
-		});
-	}),
-	_storeDirect_: d(function (ownerId, path, data) {
-		var unserialized = Boolean(data.value && isUnserializable(data.value[0]));
-		var record = {
-			ownerId: ownerId,
-			value: unserialized ? unserializeValue(data.value) : data.value,
-			stamp: data.stamp
-		};
-		if (path) {
-			record.path = path;
-			record.keyPath = resolveKeyPath(ownerId + '/' + path);
-		}
-		if (unserialized) record.unserialized = true;
-		return this.directDb.invokeAsync('update', { _id: ownerId + (path ? ('/' + path) : '') },
-			record, updateOpts);
-	}),
-	_storeComputed_: d(function (ownerId, keyPath, data) {
-		var unserialized = Boolean(data.value && isUnserializable(data.value[0]));
-		var record = {
-			ownerId: ownerId,
-			keyPath: keyPath,
-			value: unserialized ? unserializeValue(data.value) : data.value,
-			stamp: data.stamp
-		};
-		if (unserialized) record.unserialized = true;
-		return this.computedDb.invokeAsync('update', { _id: keyPath + ':' + ownerId },
-			record, updateOpts);
-	}),
-	_storeReduced_: d(function (ns, path, data) {
-		var unserialized = Boolean(data.value && isUnserializable(data.value[0]));
-		var record = {
-			ns: ns,
-			value: unserialized ? unserializeValue(data.value) : data.value,
-			stamp: data.stamp
-		};
-		if (path) record.path = path;
-		if (unserialized) record.unserialized = true;
-		return this.reducedDb.invokeAsync('update', { _id: ns + (path ? ('/' + path) : '') },
-			record, updateOpts);
-	}),
-	_loadDirect_: d(function (query, filter) {
-		return this.directDb.invokeAsync('find', query)(function (cursor) {
-			return cursor.toArrayPromised()(function (records) {
-				var result = create(null);
-				records.forEach(function (record) {
-					if (filter && !filter(record.ownerId, record.path)) return; // filtered
-					result[record._id] = {
-						value: record.unserialized ? serializeValue(record.value) : record.value,
-						stamp: record.stamp
-					};
-				});
-				return cursor.closePromised()(result);
-			}.bind(this));
-		}.bind(this));
-	})
+	__close: d(function () { return this.mongoDb.invokeAsync('close'); })
 });

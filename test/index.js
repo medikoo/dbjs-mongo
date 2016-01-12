@@ -15,7 +15,7 @@ if (env) {
 	copyEnv = Object.create(env);
 	copyEnv.collection = 'dbjs-mongo-test-copy-' + (new Date()).toISOString();
 
-	tests = getTests(env, copyEnv);
+	tests = getTests({ mongo: env }, { mongo: copyEnv });
 }
 
 module.exports = function (t, a, d) {
