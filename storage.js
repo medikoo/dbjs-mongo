@@ -10,7 +10,7 @@ var constant         = require('es5-ext/function/constant')
   , Storage          = require('dbjs-persistence/storage')
 
   , create = Object.create
-  , getUndefined = constant(undefined), getNull = constant(null)
+  , getNull = constant(null)
   , isUnserializable = RegExp.prototype.test.bind(/[01234]/)
   , updateOpts = { upsert: true };
 
@@ -90,7 +90,7 @@ MongoStorage.prototype = Object.create(Storage.prototype, {
 						stamp: record.stamp
 					});
 				});
-				return cursor.closePromised()(getUndefined);
+				return cursor.closePromised()(Function.prototype);
 			}.bind(this));
 		}.bind(this));
 	}),
@@ -103,7 +103,7 @@ MongoStorage.prototype = Object.create(Storage.prototype, {
 						stamp: record.stamp
 					});
 				});
-				return cursor.closePromised()(getUndefined);
+				return cursor.closePromised()(Function.prototype);
 			});
 		});
 	}),
