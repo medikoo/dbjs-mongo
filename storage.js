@@ -1,11 +1,13 @@
 'use strict';
 
-var constant         = require('es5-ext/function/constant')
+var assign           = require('es5-ext/object/assign')
+  , constant         = require('es5-ext/function/constant')
   , setPrototypeOf   = require('es5-ext/object/set-prototype-of')
   , serializeValue   = require('dbjs/_setup/serialize/value')
   , unserializeValue = require('dbjs/_setup/unserialize/value')
   , resolveKeyPath   = require('dbjs/_setup/utils/resolve-key-path')
   , d                = require('d')
+  , lazy             = require('d/lazy')
   , deferred         = require('deferred')
   , Storage          = require('dbjs-persistence/storage')
 
@@ -17,13 +19,10 @@ var constant         = require('es5-ext/function/constant')
 var MongoStorage = module.exports = function (driver, name/*, options*/) {
 	if (!(this instanceof MongoStorage)) return new MongoStorage(driver, name, arguments[2]);
 	Storage.call(this, driver, name, arguments[2]);
-	this.directDb = this.driver.mongoDb.invokeAsync('collection', name);
-	this.computedDb = this.driver.mongoDb.invokeAsync('collection', name + '-computed');
-	this.reducedDb = this.driver.mongoDb.invokeAsync('collection', name + '-reduced');
 };
 setPrototypeOf(MongoStorage, Storage);
 
-MongoStorage.prototype = Object.create(Storage.prototype, {
+MongoStorage.prototype = Object.create(Storage.prototype, assign({
 	constructor: d(MongoStorage),
 
 	// Any data
@@ -150,9 +149,9 @@ MongoStorage.prototype = Object.create(Storage.prototype, {
 	}),
 	__clear: d(function () {
 		return deferred(
-			this.directDb.invokeAsync('drop'),
-			this.computedDb.invokeAsync('drop'),
-			this.reducedDb.invokeAsync('drop')
+			this.hasOwnProperty('directDb') && this.directDb.invokeAsync('drop'),
+			this.hasOwnProperty('computedDb') && this.computedDb.invokeAsync('drop'),
+			this.hasOwnProperty('reducedDb') && this.reducedDb.invokeAsync('drop')
 		);
 	}),
 	__drop: d(function () { return this.__clear(); }),
@@ -249,4 +248,14 @@ MongoStorage.prototype = Object.create(Storage.prototype, {
 			}.bind(this));
 		}.bind(this));
 	})
-});
+}, lazy({
+	directDb: d(function () {
+		return this.driver.mongoDb.invokeAsync('collection', this.name);
+	}),
+	computedDb: d(function () {
+		return this.driver.mongoDb.invokeAsync('collection', this.name + '-computed');
+	}),
+	reducedDb: d(function () {
+		return this.driver.mongoDb.invokeAsync('collection', this.name + '-reduced');
+	})
+})));
