@@ -1,8 +1,13 @@
 'use strict';
 
-var getTests = require('dbjs-persistence/test/_common')
+var getTests          = require('dbjs-persistence/test/_common')
+  , storageSplitTests = require('dbjs-persistence/test/_storage-split')
 
-  , env, copyEnv, tests;
+  , env, copyEnv, splitEnv, tests;
+
+var genPostfix = function () {
+	return (new Date()).toISOString().replace(/\./g, '-').replace(/:/g, '-');
+};
 
 try {
 	env = require('../env');
@@ -11,9 +16,12 @@ try {
 }
 
 if (env) {
-	env.collection = 'dbjs-mongo-test-' + (new Date()).toISOString();
+	env.database = 'dbjs-mongo-test-' + genPostfix();
 	copyEnv = Object.create(env);
-	copyEnv.collection = 'dbjs-mongo-test-copy-' + (new Date()).toISOString();
+	copyEnv.database = 'dbjs-mongo-test-copy-' + genPostfix();
+
+	splitEnv = Object.create(env);
+	splitEnv.database = 'dbjs-mongo-split-' + genPostfix();
 
 	tests = getTests({ mongo: env }, { mongo: copyEnv });
 }
@@ -24,5 +32,7 @@ module.exports = function (t, a, d) {
 		d();
 		return;
 	}
-	return tests.apply(null, arguments).done(function () { d(); }, d);
+	return tests.apply(null, arguments)(function () {
+		return storageSplitTests(t, { mongo: splitEnv }, a);
+	}).done(function () { d(); }, d);
 };
