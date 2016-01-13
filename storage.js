@@ -155,6 +155,7 @@ MongoStorage.prototype = Object.create(Storage.prototype, {
 			this.reducedDb.invokeAsync('drop')
 		);
 	}),
+	__drop: d(function () { return this.__clear(); }),
 
 	// Connection related
 	__close: d(function () { return deferred(undefined); }),
