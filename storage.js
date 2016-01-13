@@ -157,7 +157,7 @@ MongoStorage.prototype = Object.create(Storage.prototype, {
 	}),
 
 	// Connection related
-	__close: d(Function.prototype),
+	__close: d(function () { return deferred(undefined); }),
 
 	// Driver specific
 	_getDirect_: d(function (ownerId, path) {
