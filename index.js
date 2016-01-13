@@ -27,7 +27,7 @@ var buildUrl = function (conf) {
 	url += (conf.host != null) ? conf.host : 'localhost';
 	url += ':';
 	url += (conf.port != null) ? conf.port : '27017';
-	return url + '/' + conf.databaseName;
+	return url + '/' + conf.database;
 };
 var MongoDriver = module.exports = Object.defineProperties(function (data) {
 	if (!(this instanceof MongoDriver)) return new MongoDriver(data);
