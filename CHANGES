@@ -1,3 +1,8 @@
+v0.0.13  --  2016.01.22
+* Update up to changes in dbjs-persistence
+  (driver & storage split)
+* Lazy collections resolution
+
 v0.0.12  --  2015.12.30
 * Update up to changes in dbjs-persistence
 
