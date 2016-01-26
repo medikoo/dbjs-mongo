@@ -8,6 +8,7 @@ var setPrototypeOf = require('es5-ext/object/set-prototype-of')
   , Driver         = require('dbjs-persistence/driver')
   , Mongo          = require('mongodb')
   , Storage        = require('./storage')
+  , ReducedStorage = require('./reduced-storage')
 
   , isIdent = RegExp.prototype.test.bind(/^[a-z][a-z0-9A-Z]*$/)
 
@@ -36,7 +37,10 @@ var MongoDriver = module.exports = Object.defineProperties(function (data) {
 	ensureString(data.mongo.database);
 	Driver.call(this, data);
 	this.mongoDb = connect(buildUrl(data.mongo)).aside(null, this.emitError);
-}, { storageClass: d(Storage) });
+}, {
+	storageClass: d(Storage),
+	reducedStorageClass: d(ReducedStorage)
+});
 setPrototypeOf(MongoDriver, Driver);
 
 MongoDriver.prototype = Object.create(Driver.prototype, {
