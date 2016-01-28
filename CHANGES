@@ -1,3 +1,7 @@
+v0.0.14  --  2016.01.2
+* Update up to changes in dbjs-persistence
+  (implementation of global reduced storage)
+
 v0.0.13  --  2016.01.22
 * Update up to changes in dbjs-persistence
   (driver & storage split)
