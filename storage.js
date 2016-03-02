@@ -39,12 +39,19 @@ MongoStorage.prototype = Object.create(Storage.prototype, assign({
 	}),
 
 	// Direct data
-	__getObject: d(function (ownerId, keyPaths) {
-		return this._loadDirect_({ ownerId: ownerId },
-			keyPaths && function (ownerId, path) {
-				if (!path) return true;
-				return keyPaths.has(resolveKeyPath(ownerId + '/' + path));
-			});
+	__getObject: d(function (ownerId, objectPath, keyPaths) {
+		var query;
+		if (objectPath) {
+			query = {
+				_id: { $gte: ownerId + '/' + objectPath, $lt:  ownerId + '/' + objectPath + '/\uffff' }
+			};
+		} else {
+			query = { ownerId: ownerId };
+		}
+		return this._loadDirect_(query, keyPaths && function (ownerId, path) {
+			if (!path) return true;
+			return keyPaths.has(resolveKeyPath(ownerId + '/' + path));
+		});
 	}),
 	__getAllObjectIds: d(function () {
 		return this.directDb.invokeAsync('find')(function (cursor) {
