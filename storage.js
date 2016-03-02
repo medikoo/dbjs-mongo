@@ -10,6 +10,7 @@ var assign           = require('es5-ext/object/assign')
   , lazy             = require('d/lazy')
   , deferred         = require('deferred')
   , Storage          = require('dbjs-persistence/storage')
+  , resolveValue     = require('dbjs-persistence/lib/resolve-direct-value')
 
   , create = Object.create
   , getNull = constant(null)
@@ -74,18 +75,25 @@ MongoStorage.prototype = Object.create(Storage.prototype, assign({
 		}.bind(this));
 	}),
 
-	// Size tracking
-	__search: d(function (keyPath, callback) {
+	__search: d(function (keyPath, value, callback) {
 		return this.directDb.invokeAsync('find')(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
 				records.some(function (record) {
-					if (!keyPath) {
-						if (record.keyPath) return;
-					} else if (keyPath !== record.keyPath) {
-						return;
+					var recordValue, resolvedValue;
+					if (keyPath !== undefined) {
+						if (!keyPath) {
+							if (record.keyPath) return;
+						} else if (keyPath !== record.keyPath) {
+							return;
+						}
+					}
+					recordValue = record.unserialized ? serializeValue(record.value) : record.value;
+					if (value != null) {
+						resolvedValue = resolveValue(record.ownerId, record.path, recordValue);
+						if (value !== resolvedValue) return;
 					}
 					return callback(record._id, {
-						value: record.unserialized ? serializeValue(record.value) : record.value,
+						value: recordValue,
 						stamp: record.stamp
 					});
 				});
