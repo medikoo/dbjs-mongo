@@ -16,8 +16,8 @@
     "es5-ext": "^0.10.11",
     "d": "1",
     "deferred": "^0.7.5",
-    "dbjs": "git://github.com/medikoo/dbjs.git#3bb8b3974b57eb7ad3fb08f798706bc085c94185",
-    "dbjs-persistence": "0.0.17",
+    "dbjs": "git://github.com/medikoo/dbjs.git#222aec4475aa1fc94abb549691e352b5bcd072eb",
+    "dbjs-persistence": "0.0.19",
     "mongodb": "^2.1.4"
   },
   "devDependencies": {
