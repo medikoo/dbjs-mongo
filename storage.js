@@ -1,16 +1,17 @@
 'use strict';
 
-var assign           = require('es5-ext/object/assign')
-  , constant         = require('es5-ext/function/constant')
-  , setPrototypeOf   = require('es5-ext/object/set-prototype-of')
-  , serializeValue   = require('dbjs/_setup/serialize/value')
-  , unserializeValue = require('dbjs/_setup/unserialize/value')
-  , resolveKeyPath   = require('dbjs/_setup/utils/resolve-key-path')
-  , d                = require('d')
-  , lazy             = require('d/lazy')
-  , deferred         = require('deferred')
-  , Storage          = require('dbjs-persistence/storage')
-  , resolveValue     = require('dbjs-persistence/lib/resolve-direct-value')
+var assign              = require('es5-ext/object/assign')
+  , constant            = require('es5-ext/function/constant')
+  , setPrototypeOf      = require('es5-ext/object/set-prototype-of')
+  , serializeValue      = require('dbjs/_setup/serialize/value')
+  , unserializeValue    = require('dbjs/_setup/unserialize/value')
+  , resolveKeyPath      = require('dbjs/_setup/utils/resolve-key-path')
+  , d                   = require('d')
+  , lazy                = require('d/lazy')
+  , deferred            = require('deferred')
+  , Storage             = require('dbjs-persistence/storage')
+  , resolveValue        = require('dbjs-persistence/lib/resolve-direct-value')
+  , filterComputedValue = require('dbjs-persistence/lib/filter-computed-value')
 
   , create = Object.create
   , getNull = constant(null)
@@ -108,12 +109,16 @@ MongoStorage.prototype = Object.create(Storage.prototype, assign({
 			}.bind(this));
 		}.bind(this));
 	}),
-	__searchComputed: d(function (keyPath, callback) {
-		return this.computedDb.invokeAsync('find', { keyPath: keyPath })(function (cursor) {
+	__searchComputed: d(function (keyPath, value, callback) {
+		var query;
+		if (keyPath) query = { keyPath: keyPath };
+		return this.computedDb.invokeAsync('find', query)(function (cursor) {
 			return cursor.toArrayPromised()(function (records) {
 				records.some(function (record) {
-					callback(record.ownerId, {
-						value: record.unserialized ? serializeValue(record.value) : record.value,
+					var recordValue = record.unserialized ? serializeValue(record.value) : record.value;
+					if ((value != null) && !filterComputedValue(value, recordValue)) return;
+					return callback(record.ownerId, {
+						value: recordValue,
 						stamp: record.stamp
 					});
 				});
