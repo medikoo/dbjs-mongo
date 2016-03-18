@@ -1,4 +1,7 @@
-v0.0.14  --  2016.01.2
+v0.0.15  --  2016.03.18
+* Update up to changes in dbjs-persistence
+
+v0.0.14  --  2016.01.28
 * Update up to changes in dbjs-persistence
   (implementation of global reduced storage)
 
