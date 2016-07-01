@@ -117,7 +117,7 @@ MongoStorage.prototype = Object.create(Storage.prototype, assign({
 				records.some(function (record) {
 					var recordValue = record.unserialized ? serializeValue(record.value) : record.value;
 					if ((value != null) && !filterComputedValue(value, recordValue)) return;
-					return callback(record.ownerId, {
+					return callback(record.ownerId + '/' + record.keyPath, {
 						value: recordValue,
 						stamp: record.stamp
 					});
